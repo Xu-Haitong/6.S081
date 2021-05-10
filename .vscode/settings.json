@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "sysinfo.h": "c",
+        "defs.h": "c",
+        "proc.h": "c",
+        "spinlock.h": "c",
+        "param.h": "c",
+        "date.h": "c"
+    }
+}
