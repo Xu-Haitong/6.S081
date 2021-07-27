@@ -296,6 +296,9 @@ userinit(void)
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
+  // 添加复制
+  u2kvmcopy(p->pagetable, p->kpagetable, 0, p->sz);
+
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
@@ -314,9 +317,14 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    // 不能覆盖PLIC地址空间
+    if (sz + n > PLIC)
+      return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    // 添加复制
+    u2kvmcopy(p->pagetable, p->kpagetable, sz-n, sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
@@ -359,6 +367,9 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+  // 添加复制
+  u2kvmcopy(np->pagetable, np->kpagetable, 0, np->sz);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -773,5 +784,30 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+// 复制函数用于pagetable的复制，其中要注意就是因为pagetable的叶节点，也就是PTE的标志位设置PTE_U，进入内核时无法使用该地址，需要先清除再放入kernel pagetable里
+void
+u2kvmcopy(pagetable_t pagetable, pagetable_t kpagetable, uint64 oldsz, uint64 newsz)
+{
+  pte_t *pte_from, *pte_to;
+  uint64 a, pa;
+  uint flags;
+
+  if (newsz < oldsz)
+    return;
+  
+  oldsz = PGROUNDUP(oldsz);
+  for (a = oldsz; a < newsz; a += PGSIZE)
+  {
+    if ((pte_from = walk(pagetable, a, 0)) == 0)
+      panic("u2kvmcopy: pte should exist");
+    if ((pte_to = walk(kpagetable, a, 1)) == 0)
+      panic("u2kvmcopy: walk fails");
+    pa = PTE2PA(*pte_from);
+    // 清除PTE_U的标记位
+    flags = (PTE_FLAGS(*pte_from) & (~PTE_U));
+    *pte_to = PA2PTE(pa) | flags;
   }
 }
