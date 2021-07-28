@@ -327,6 +327,9 @@ growproc(int n)
     u2kvmcopy(p->pagetable, p->kpagetable, sz-n, sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+
+    // 缩小内存需要去掉缩小的映射（没有这一行代码其实也通过了测试）
+    uvmunmap(p->kpagetable,PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE,0);
   }
   p->sz = sz;
   return 0;
